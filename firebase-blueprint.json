@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user profile for Farmatodo employees",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nombre": { "type": "string" },
+        "apellido": { "type": "string" },
+        "cedula": { "type": "string" },
+        "pais": { "type": "string" },
+        "unidad_negocio": { "type": "string" },
+        "tienda": { "type": "string" },
+        "cargo": { "type": "string" },
+        "rol_sistema": { "type": "string", "enum": ["COLABORADOR", "SUPERVISOR_TIENDA", "SUPERVISOR_OFICINA", "ADMIN"] },
+        "area": { "type": "string", "enum": ["Operaciones", "Oficina"] },
+        "fecha_ingreso": { "type": "string", "format": "date-time" },
+        "id_supervisor": { "type": "string" }
+      },
+      "required": ["id", "nombre", "apellido", "cargo", "rol_sistema"]
+    },
+    "Cargo": {
+      "title": "Cargo",
+      "description": "Job position definition",
+      "type": "object",
+      "properties": {
+        "cargo": { "type": "string" },
+        "rol": { "type": "string" },
+        "pde_asignado": { "type": "string" },
+        "duracion_dias": { "type": "integer" }
+      },
+      "required": ["cargo", "rol", "pde_asignado", "duracion_dias"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Training plan",
+      "type": "object",
+      "properties": {
+        "nombre_plan": { "type": "string" }
+      },
+      "required": ["nombre_plan"]
+    },
+    "Modulo": {
+      "title": "Modulo",
+      "description": "Module within a plan",
+      "type": "object",
+      "properties": {
+        "nombre_modulo": { "type": "string" },
+        "plan_id": { "type": "string" },
+        "orden": { "type": "integer" }
+      },
+      "required": ["nombre_modulo", "plan_id", "orden"]
+    },
+    "Tarea": {
+      "title": "Tarea",
+      "description": "Task within a module",
+      "type": "object",
+      "properties": {
+        "nombre_tarea": { "type": "string" },
+        "modulo": { "type": "string" },
+        "pap": { "type": "string" },
+        "curso": { "type": "string" }
+      },
+      "required": ["nombre_tarea", "modulo"]
+    },
+    "Recurso": {
+      "title": "Recurso",
+      "description": "Library resource",
+      "type": "object",
+      "properties": {
+        "nombre_recurso": { "type": "string" },
+        "tipo": { "type": "string" },
+        "enlace": { "type": "string" }
+      },
+      "required": ["nombre_recurso", "tipo", "enlace"]
+    },
+    "Instruccion": {
+      "title": "Instruccion",
+      "description": "User instructions or guides",
+      "type": "object",
+      "properties": {
+        "titulo": { "type": "string" },
+        "contenido": { "type": "string" }
+      },
+      "required": ["titulo", "contenido"]
+    },
+    "UserProgress": {
+      "title": "UserProgress",
+      "description": "Tracking progress of a user",
+      "type": "object",
+      "properties": {
+        "id_usuario": { "type": "string" },
+        "id_plan": { "type": "string" },
+        "fecha_inicio": { "type": "string", "format": "date-time" },
+        "estado_general": { "type": "string" },
+        "progreso_porcentaje": { "type": "number" },
+        "checks_completados": { "type": "array", "items": { "type": "string" } },
+        "ultima_actividad": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id_usuario", "id_plan", "fecha_inicio", "estado_general", "progreso_porcentaje", "checks_completados", "ultima_actividad"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "cargos/{cargoId}": {
+      "schema": "Cargo",
+      "description": "Job positions and their default plans"
+    },
+    "planes/{planId}": {
+      "schema": "Plan",
+      "description": "Training plans"
+    },
+    "modulos/{moduloId}": {
+      "schema": "Modulo",
+      "description": "Training modules"
+    },
+    "tareas/{tareaId}": {
+      "schema": "Tarea",
+      "description": "Training tasks"
+    },
+    "biblioteca_recursos/{recursoId}": {
+      "schema": "Recurso",
+      "description": "Resource library"
+    },
+    "instrucciones/{instruccionId}": {
+      "schema": "Instruccion",
+      "description": "System instructions"
+    },
+    "progress/{progressId}": {
+      "schema": "UserProgress",
+      "description": "User progress records"
+    }
+  }
+}

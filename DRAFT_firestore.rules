@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global safe-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        getUserData(request.auth.uid).rol_sistema == 'ADMIN' ||
+        request.auth.token.email == 'orianavalentina05@gmail.com'
+      );
+    }
+
+    function isSupervisorOf(targetUid) {
+      return isVerified() && getUserData(targetUid).id_supervisor == request.auth.uid;
+    }
+
+    // Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'nombre', 'apellido', 'cedula', 'pais', 'unidad_negocio', 'tienda', 'cargo', 'rol_sistema', 'area', 'fecha_ingreso', 'id_supervisor'])
+        && data.keys().size() == 12
+        && data.id is string && data.id.size() <= 128
+        && data.nombre is string && data.nombre.size() <= 100
+        && data.rol_sistema in ['COLABORADOR', 'SUPERVISOR_TIENDA', 'SUPERVISOR_OFICINA', 'ADMIN'];
+    }
+
+    function isValidResource(data) {
+      return data.keys().hasAll(['codigo', 'nombre', 'tipo', 'estado'])
+        && data.keys().size() >= 4 && data.keys().size() <= 5
+        && data.codigo is string && data.codigo.size() <= 64
+        && data.nombre is string && data.nombre.size() <= 200
+        && data.tipo in ['PAP', 'VIDEO', 'CURSO', 'ENCUESTA']
+        && data.estado in ['ACTIVO', 'INACTIVO'];
+    }
+
+    function isValidMasterPlan(data) {
+      return data.keys().hasAll(['id_plan', 'cargo_target', 'duracion_dias', 'modulos'])
+        && data.keys().size() == 4
+        && data.id_plan is string && data.id_plan.size() <= 64
+        && data.cargo_target is string && data.cargo_target.size() <= 100
+        && data.duracion_dias is int;
+    }
+
+    function isValidUserProgress(data) {
+      return data.keys().hasAll(['id_usuario', 'id_plan', 'fecha_inicio', 'estado_general', 'progreso_porcentaje', 'checks_completados', 'ultima_actividad'])
+        && data.keys().size() >= 7 && data.keys().size() <= 8
+        && data.id_usuario is string && data.id_usuario.size() <= 128
+        && data.id_plan is string && data.id_plan.size() <= 64
+        && data.estado_general in ['EN_PROCESO', 'PENDIENTE', 'FORMADO', 'FALTA_APROBACION']
+        && data.progreso_porcentaje is number
+        && data.checks_completados is list;
+    }
+
+    // Collections
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isSupervisorOf(userId));
+      allow list: if isVerified() && (isAdmin() || getUserData(request.auth.uid).rol_sistema.startsWith('SUPERVISOR'));
+      allow create: if isVerified() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isVerified() && (
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['nombre', 'apellido', 'area', 'tienda'])) ||
+        isAdmin()
+      ) && isValidUser(incoming());
+    }
+
+    match /resources/{resourceId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidResource(incoming());
+    }
+
+    match /masterPlans/{planId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidMasterPlan(incoming());
+    }
+
+    match /progress/{progressId} {
+      allow get: if isSignedIn() && (incoming().id_usuario == request.auth.uid || isAdmin() || isSupervisorOf(incoming().id_usuario));
+      allow list: if isVerified() && (
+        resource.data.id_usuario == request.auth.uid || 
+        isAdmin() || 
+        isSupervisorOf(resource.data.id_usuario)
+      );
+      allow create: if isVerified() && incoming().id_usuario == request.auth.uid && isValidUserProgress(incoming());
+      allow update: if isVerified() && (
+        (incoming().id_usuario == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['checks_completados', 'progreso_porcentaje', 'ultima_actividad'])) ||
+        isAdmin() ||
+        isSupervisorOf(incoming().id_usuario)
+      ) && isValidUserProgress(incoming());
+    }
+  }
+}

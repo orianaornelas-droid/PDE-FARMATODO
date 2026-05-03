@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global safe-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { 
+      return isSignedIn() && (
+        request.auth.token.email_verified == true && (
+          request.auth.token.email.matches('.*@farmatodo\\.com$') || 
+          request.auth.token.email.matches('.*@farmado\\.com$') ||
+          request.auth.token.email == 'orianavalentina05@gmail.com'
+        )
+      ); 
+    }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        getUserData(request.auth.uid).rol_sistema == 'ADMIN' ||
+        request.auth.token.email == 'orianavalentina05@gmail.com'
+      );
+    }
+
+    function isSupervisorOf(targetUid) {
+      return isVerified() && getUserData(targetUid).id_supervisor == request.auth.uid;
+    }
+
+    // Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'nombre', 'apellido', 'cargo', 'rol_sistema'])
+        && data.id is string
+        && data.nombre is string
+        && data.rol_sistema in ['COLABORADOR', 'SUPERVISOR_TIENDA', 'SUPERVISOR_OFICINA', 'ADMIN'];
+    }
+
+    function isValidCargo(data) {
+      return data.keys().hasAll(['cargo', 'rol', 'pde_asignado', 'duracion_dias'])
+        && data.cargo is string && data.duracion_dias is int;
+    }
+
+    function isValidPlan(data) {
+      return data.keys().hasAll(['nombre_plan']) && data.nombre_plan is string;
+    }
+
+    function isValidModulo(data) {
+      return data.keys().hasAll(['nombre_modulo', 'plan_id', 'orden'])
+        && data.nombre_modulo is string && data.plan_id is string && data.orden is int;
+    }
+
+    function isValidTarea(data) {
+      return data.keys().hasAll(['nombre_tarea', 'modulo'])
+        && data.nombre_tarea is string && data.modulo is string;
+    }
+
+    function isValidRecurso(data) {
+      return data.keys().hasAll(['nombre_recurso', 'tipo', 'enlace'])
+        && data.nombre_recurso is string && data.tipo is string && data.enlace is string;
+    }
+
+    function isValidInstruccion(data) {
+      return data.keys().hasAll(['titulo', 'contenido'])
+        && data.titulo is string && data.contenido is string;
+    }
+
+    function isValidUserProgress(data) {
+      return data.keys().hasAll(['id_usuario', 'id_plan', 'fecha_inicio', 'estado_general', 'progreso_porcentaje', 'checks_completados', 'ultima_actividad'])
+        && data.id_usuario is string
+        && data.id_plan is string
+        && data.progreso_porcentaje is number
+        && data.checks_completados is list;
+    }
+
+    // Collections
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin() || isSupervisorOf(userId));
+      allow list: if isVerified() && (isAdmin() || getUserData(request.auth.uid).rol_sistema.startsWith('SUPERVISOR'));
+      allow create: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isVerified() && isValidId(userId) && (
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['nombre', 'apellido', 'area', 'tienda'])) ||
+        isAdmin()
+      ) && isValidUser(incoming());
+    }
+
+    match /cargos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidCargo(incoming());
+    }
+
+    match /planes/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidPlan(incoming());
+    }
+
+    match /modulos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidModulo(incoming());
+    }
+
+    match /tareas/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidTarea(incoming());
+    }
+
+    match /biblioteca_recursos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidRecurso(incoming());
+    }
+
+    match /instrucciones/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidInstruccion(incoming());
+    }
+
+    match /progress/{progressId} {
+      allow get: if isSignedIn() && isValidId(progressId) && (existing().id_usuario == request.auth.uid || isAdmin() || isSupervisorOf(existing().id_usuario));
+      allow list: if isVerified() && (
+        resource.data.id_usuario == request.auth.uid || 
+        isAdmin() || 
+        isSupervisorOf(resource.data.id_usuario)
+      );
+      allow create: if isVerified() && isValidId(progressId) && incoming().id_usuario == request.auth.uid && isValidUserProgress(incoming());
+      allow update: if isVerified() && isValidId(progressId) && (
+        (existing().id_usuario == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['checks_completados', 'progreso_porcentaje', 'ultima_actividad'])) ||
+        isAdmin() ||
+        isSupervisorOf(existing().id_usuario)
+      ) && isValidUserProgress(incoming());
+    }
+  }
+}
